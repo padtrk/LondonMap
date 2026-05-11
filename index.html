@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>London Green — A Survey of Open Spaces</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=UnifrakturCook:wght@700&family=IM+Fell+English:ital,wght@0,400;1,400&family=IM+Fell+DW+Pica+SC&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --paper:    #ede4cf;
+    --paper-2:  #e3d8bd;
+    --ink:      #1a140c;
+    --ink-soft: #2c2418;
+    --ochre:    #8a4818;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%; overflow: hidden;
+    background: var(--ink);
+    font-family: 'IM Fell English', Georgia, serif;
+    color: var(--ink);
+  }
+
+  /* ── Map fills viewport ── */
+  #map {
+    position: absolute;
+    inset: 0;
+    background: var(--paper);
+  }
+
+  /* Parchment filter on OSM tiles — same approach as Marauder's Map */
+  .leaflet-tile-pane {
+    filter: sepia(0.85) saturate(0.3) brightness(0.9) contrast(0.88) hue-rotate(8deg);
+  }
+  .leaflet-container { background: var(--paper); }
+  .leaflet-control-zoom a {
+    background: var(--paper-2) !important;
+    color: var(--ink) !important;
+    border-color: var(--ink-soft) !important;
+    font-family: 'IM Fell English', serif !important;
+  }
+  .leaflet-control-attribution { display: none; }
+
+  /* ── Parchment grain overlay ── */
+  #grain {
+    position: absolute; inset: 0; z-index: 500;
+    pointer-events: none;
+    background-image:
+      radial-gradient(ellipse 3px 4px at 12% 23%, rgba(90,50,10,0.16) 0%, transparent 100%),
+      radial-gradient(ellipse 5px 3px at 34% 67%, rgba(80,40,5,0.11) 0%, transparent 100%),
+      radial-gradient(ellipse 2px 3px at 58% 14%, rgba(100,60,10,0.13) 0%, transparent 100%),
+      radial-gradient(ellipse 4px 2px at 78% 82%, rgba(70,35,5,0.12) 0%, transparent 100%),
+      radial-gradient(ellipse 3px 5px at 89% 41%, rgba(90,50,10,0.09) 0%, transparent 100%),
+      radial-gradient(ellipse 6px 3px at 22% 88%, rgba(80,45,8,0.11) 0%, transparent 100%),
+      radial-gradient(ellipse 100% 100% at 50% 50%, transparent 38%, rgba(26,20,12,0.42) 100%);
+    mix-blend-mode: multiply;
+  }
+
+  /* ── Fine crosshatch grain ── */
+  #grain::after {
+    content: '';
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background-image:
+      repeating-linear-gradient(0deg,  rgba(60,40,15,0.022) 0px, rgba(60,40,15,0.022) 1px, transparent 1px, transparent 3px),
+      repeating-linear-gradient(90deg, rgba(60,40,15,0.016) 0px, rgba(60,40,15,0.016) 1px, transparent 1px, transparent 4px);
+    mix-blend-mode: multiply;
+  }
+
+  /* ── Masthead ── */
+  #masthead {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 50px;
+    z-index: 1000;
+    background: var(--paper);
+    border-bottom: 3px double var(--ink);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 0 10px;
+  }
+  #masthead::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border: 0.4px solid rgba(26,20,12,0.3);
+    pointer-events: none;
+  }
+  /* diamond corner ornaments */
+  #masthead::after {
+    content: '';
+    position: absolute;
+    inset: 0; pointer-events: none;
+  }
+  .mast-diamond {
+    position: absolute; width: 7px; height: 7px;
+    background: var(--ink); transform: rotate(45deg);
+    z-index: 1001;
+  }
+  #md-tl { top:  2px; left:  2px; }
+  #md-tr { top:  2px; right: 2px; }
+  #md-bl { bottom: 2px; left:  2px; }
+  #md-br { bottom: 2px; right: 2px; }
+
+  #masthead h1 {
+    font-family: 'UnifrakturCook', serif;
+    font-size: 1.55rem; font-weight: 700;
+    line-height: 1; color: var(--ink);
+  }
+  #masthead .sub {
+    font-family: 'IM Fell DW Pica SC', serif;
+    font-size: 0.58rem; letter-spacing: 0.2em;
+    color: var(--ink-soft); margin-top: 3px;
+  }
+
+  /* ── Chorus strip ── */
+  #chorus {
+    position: absolute;
+    top: 50px; left: 0; right: 0;
+    height: 64px;
+    z-index: 1000;
+    background: var(--paper-2);
+    border-bottom: 3px double var(--ink);
+    display: flex;
+  }
+  .cc {
+    flex: 1 1 0;
+    padding: 4px 2px 3px;
+    text-align: center;
+    border-right: 1px solid rgba(26,20,12,0.22);
+    position: relative;
+  }
+  .cc:last-child { border-right: none; }
+  .cv { width: 100%; height: 38px; display: block; }
+  .clbl {
+    font-family: 'IM Fell DW Pica SC', serif;
+    font-size: 0.48rem; letter-spacing: 0.14em;
+    color: var(--ink-soft); margin-top: 2px;
+  }
+  .cc.mute  { opacity: 0.7; }
+  .cc.ready { animation: rpulse 4s ease-in-out infinite; }
+  @keyframes rpulse {
+    0%,100% { background: rgba(138,72,24,0.05); }
+    50%      { background: rgba(138,72,24,0.13); }
+  }
+
+  /* Lamp cell: dramatic night state — dark background, glowing lamps.
+     Daytime is the default (just the muted state).
+     The .lit modifier overrides everything else for clear visual signal. */
+  .cc[data-id="lamps"].lit {
+    background: #1a140c !important;
+    animation: lampglow 5s ease-in-out infinite;
+  }
+  .cc[data-id="lamps"].lit .clbl {
+    color: #d4b87a;
+  }
+  .cc[data-id="lamps"].lit .crd {
+    color: #f4d89a;
+    text-shadow:
+      0 0 4px rgba(244,216,154,0.6),
+      0 0 4px rgba(244,216,154,0.6);
+  }
+  @keyframes lampglow {
+    0%,100% { box-shadow: inset 0 0 8px rgba(244,216,154,0.15); }
+    50%      { box-shadow: inset 0 0 14px rgba(244,216,154,0.3); }
+  }
+
+  /* Numeric readout — sits inside each cell as a small italic number,
+     gives the precise value the illustration only suggests. */
+  .crd {
+    position: absolute;
+    top: 3px; right: 4px;
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--ink);
+    line-height: 1;
+    pointer-events: none;
+    text-shadow:
+      0 0 3px var(--paper-2), 0 0 3px var(--paper-2),
+      0 0 3px var(--paper-2), 0 0 3px var(--paper-2);
+    z-index: 2;
+  }
+  .crd .crd-u {
+    font-size: 9px;
+    opacity: 0.75;
+  }
+
+  /* ── Toggle ── */
+  #toggle {
+    position: absolute;
+    bottom: 28px; left: 50%; transform: translateX(-50%);
+    z-index: 1000;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(237,228,207,0.95);
+    border: 1px solid var(--ink-soft);
+    padding: 5px 16px 6px;
+    cursor: pointer; user-select: none;
+  }
+  #toggle::before {
+    content: ''; position: absolute; inset: 3px;
+    border: 0.4px solid var(--ink-soft); pointer-events: none;
+  }
+  #toggle:hover { background: var(--paper); }
+  .tl {
+    font-family: 'IM Fell DW Pica SC', serif;
+    font-size: 9px; letter-spacing: 0.2em;
+    color: var(--ink-soft); opacity: 0.4; transition: opacity .3s;
+  }
+  .tl.on { opacity: 1; color: var(--ink); }
+  .pip {
+    width: 9px; height: 9px;
+    background: var(--ink-soft); transform: rotate(45deg);
+    opacity: 0.3; transition: opacity .3s, background .3s; flex-shrink: 0;
+  }
+  #toggle.city .pip { background: var(--ink); opacity: 1; }
+
+  /* ── Legend ── */
+  #legend {
+    position: absolute;
+    bottom: 28px; right: 14px;
+    z-index: 1000;
+    background: rgba(237,228,207,0.95);
+    border: 1px solid var(--ink-soft);
+    padding: 10px 14px;
+  }
+  #legend::before {
+    content: ''; position: absolute; inset: 3px;
+    border: 0.4px solid var(--ink-soft); pointer-events: none;
+  }
+  .leg-head {
+    font-family: 'IM Fell DW Pica SC', serif;
+    font-size: 8px; letter-spacing: 0.2em;
+    color: var(--ink-soft); border-bottom: 1px solid rgba(26,20,12,0.3);
+    padding-bottom: 5px; margin-bottom: 7px;
+  }
+  .leg-row {
+    display: flex; align-items: center; gap: 8px;
+    font-family: 'IM Fell English', serif;
+    font-style: italic; font-size: 10px;
+    color: var(--ink-soft); margin-bottom: 5px;
+  }
+  .leg-row:last-child { margin-bottom: 0; }
+  .leg-swatch {
+    width: 14px; height: 10px; flex-shrink: 0;
+  }
+
+  /* Loading notice */
+  #loading-notice {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 1001;
+    font-family: 'IM Fell English', serif;
+    font-style: italic; font-size: 0.95rem;
+    color: var(--ink-soft);
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 1s;
+  }
+
+  /* ── Pub markers ── */
+  .pub-icon, .pub-cluster-icon { background: transparent; border: none; }
+  .pub-icon svg, .pub-cluster-icon svg { display: block; overflow: visible; }
+  .pub-cluster-icon .ccount {
+    position: absolute;
+    top: 50%; left: 100%;
+    transform: translate(2px, -50%);
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 11px;
+    color: var(--ink);
+    white-space: nowrap;
+    text-shadow: 0 0 3px var(--paper), 0 0 3px var(--paper);
+    pointer-events: none;
+  }
+
+  /* Parchment-styled popups for pub names */
+  .leaflet-popup-content-wrapper {
+    background: var(--paper) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--ink-soft) !important;
+    border-radius: 0 !important;
+    box-shadow: 0 1px 4px rgba(26,20,12,0.3) !important;
+    font-family: 'IM Fell English', serif !important;
+  }
+  .leaflet-popup-content {
+    margin: 8px 14px !important;
+    font-family: 'IM Fell English', serif !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+  }
+  .pub-name { font-size: 13px; }
+  .pub-meta {
+    font-style: italic;
+    font-size: 10px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .leaflet-popup-tip {
+    background: var(--paper) !important;
+    border: 1px solid var(--ink-soft) !important;
+  }
+  .leaflet-popup-close-button {
+    color: var(--ink-soft) !important;
+  }
+
+  /* Attribution */
+  #attr {
+    position: absolute;
+    bottom: 6px; left: 14px;
+    z-index: 1000;
+    font-family: 'IM Fell English', serif;
+    font-style: italic; font-size: 9px;
+    color: var(--ink-soft); opacity: 0.6;
+    pointer-events: none;
+  }
+
+  /* ── Celestial cartouche ── */
+  #celestial {
+    position: absolute;
+    z-index: 600;
+    pointer-events: none;
+    transition: left 8s linear, top 8s linear, opacity 2s ease;
+    /* initial position; JS sets real values */
+    left: 50%; top: 30%;
+    transform: translate(-50%, -50%);
+    width: 72px; height: 72px;
+  }
+  #celestial svg { display: block; }
+
+  /* ── Mobile adaptations ── */
+  @media (max-width: 640px) {
+    /* Hide legend by default — show on tap of a small chip */
+    #legend {
+      display: none;
+      bottom: 70px;
+      right: 8px;
+    }
+    #legend.shown { display: block; }
+    #legend-chip {
+      position: absolute;
+      bottom: 28px; right: 14px;
+      z-index: 1000;
+      background: rgba(237,228,207,0.95);
+      border: 1px solid var(--ink-soft);
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; user-select: none;
+      font-family: 'IM Fell English', serif;
+      font-style: italic;
+      font-size: 16px;
+      color: var(--ink);
+    }
+    /* Smaller cartouche on phones */
+    #celestial { width: 52px; height: 52px; }
+    #celestial svg { width: 52px; height: 52px; }
+  }
+  @media (min-width: 641px) {
+    #legend-chip { display: none; }
+  }
+
+  /* ── Pub markers ── */
+  .pub-icon {
+    /* allow the SVG to overflow leaflet's icon box for the cluster numeral */
+    overflow: visible !important;
+  }
+  .pub-icon svg {
+    overflow: visible;
+    display: block;
+  }
+  /* Parchment-styled popup */
+  .leaflet-popup-content-wrapper {
+    background: var(--paper) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--ink-soft) !important;
+    border-radius: 0 !important;
+    box-shadow: 0 1px 4px rgba(26,20,12,0.3) !important;
+    font-family: 'IM Fell English', serif !important;
+  }
+  .leaflet-popup-content {
+    margin: 8px 14px !important;
+    font-family: 'IM Fell English', serif !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+    color: var(--ink) !important;
+  }
+  .leaflet-popup-content .pub-name {
+    font-weight: normal;
+    font-size: 13px;
+  }
+  .leaflet-popup-content .pub-meta {
+    font-style: italic;
+    font-size: 10px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .leaflet-popup-tip {
+    background: var(--paper) !important;
+    border: 1px solid var(--ink-soft) !important;
+  }
+  .leaflet-popup-close-button {
+    color: var(--ink-soft) !important;
+    font-family: 'IM Fell English', serif !important;
+    font-size: 14px !important;
+  }
+</style>
+</head>
+<body>
+
+<!-- Map -->
+<div id="map"></div>
+<div id="grain"></div>
+
+<!-- Masthead -->
+<div id="masthead">
+  <span class="mast-diamond" id="md-tl"></span>
+  <span class="mast-diamond" id="md-tr"></span>
+  <span class="mast-diamond" id="md-bl"></span>
+  <span class="mast-diamond" id="md-br"></span>
+  <h1>London Green</h1>
+  <div class="sub">A Survey of Parks, Commons &amp; Open Waters &middot; Inner London</div>
+</div>
+
+<!-- Chorus -->
+<div id="chorus">
+  <div class="cc" data-id="thames"><span class="crd" id="rd-thames"></span><svg viewBox="0 0 60 38" class="cv" id="cv-thames"></svg><div class="clbl">River</div></div>
+  <div class="cc" data-id="wind">  <span class="crd" id="rd-wind"></span>  <svg viewBox="0 0 60 38" class="cv" id="cv-wind"></svg>  <div class="clbl">Wind</div></div>
+  <div class="cc" data-id="air">   <span class="crd" id="rd-air"></span>   <svg viewBox="0 0 60 38" class="cv" id="cv-air"></svg>   <div class="clbl">Air</div></div>
+  <div class="cc" data-id="lamps"> <span class="crd" id="rd-lamps"></span> <svg viewBox="0 0 60 38" class="cv" id="cv-lamps"></svg> <div class="clbl">Lamps</div></div>
+  <div class="cc" data-id="pollen"><span class="crd" id="rd-pollen"></span><svg viewBox="0 0 60 38" class="cv" id="cv-pollen"></svg><div class="clbl">Pollen</div></div>
+  <div class="cc" data-id="temp">  <span class="crd" id="rd-temp"></span>  <svg viewBox="0 0 60 38" class="cv" id="cv-temp"></svg>  <div class="clbl">Temp</div></div>
+</div>
+
+<!-- Toggle -->
+<div id="toggle" onclick="doToggle()">
+  <span class="tl on" id="ll">Land</span>
+  <div class="pip"></div>
+  <span class="tl"    id="lc">City</span>
+  <div class="pip"></div>
+  <span class="tl"    id="lp">Pubs</span>
+</div>
+
+<!-- Legend chip (mobile only) -->
+<div id="legend-chip" onclick="document.getElementById('legend').classList.toggle('shown')">?</div>
+
+<!-- Legend -->
+<div id="legend">
+  <div class="leg-head">The Map</div>
+  <div class="leg-row"><svg class="leg-swatch"><rect width="14" height="10" fill="#c8ddb8" stroke="#3d6b3a" stroke-width="0.8"/></svg>Parks &amp; open space</div>
+  <div class="leg-row"><svg class="leg-swatch"><rect width="14" height="10" fill="#b8d4e8" stroke="#4a7a9b" stroke-width="0.8"/></svg>Rivers &amp; lakes</div>
+  <div class="leg-row"><svg class="leg-swatch" viewBox="0 0 14 14" style="width:12px;height:12px"><path d="M3.2,3 Q5,1.5 7,2.2 Q9,1.5 10.8,3 L10.8,4 L3.2,4 Z" fill="#1a140c"/><rect x="3" y="4" width="6" height="7" fill="#1a140c"/><path d="M9,5.5 q3,0.5 3,2.5 t-3,2.5" fill="none" stroke="#1a140c" stroke-width="1"/></svg>Pubs (toggle)</div>
+  <div class="leg-row"><svg class="leg-swatch" style="opacity:0.5"><rect width="14" height="10" fill="#dfd0a8" stroke="#8a7a5a" stroke-width="0.8"/></svg>City (toggle)</div>
+</div>
+
+<div id="loading-notice">— the map is being drawn —</div>
+
+<!-- Sun/moon cartouche — floats over the map, position follows real sky -->
+<div id="celestial">
+  <svg id="celestial-svg" viewBox="0 0 80 80" width="72" height="72"></svg>
+</div>
+
+<div id="attr">OpenStreetMap contributors · open-meteo · Environment Agency</div>
+
+<script>
+'use strict';
+
+/* ══════════════════════════════════════════════════════
+   PALETTE
+══════════════════════════════════════════════════════ */
+const INK   = '#1a140c';
+const PAPER = '#e3d8bd';
+
+/* ══════════════════════════════════════════════════════
+   LIVE DATA
+══════════════════════════════════════════════════════ */
+const W = { weather: null, air: null, tide: null, sun: null };
+const RLAT = 51.505, RLON = -0.118;
+
+async function fetchAll() {
+  try {
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${RLAT}&longitude=${RLON}&current=temperature_2m,rain,wind_speed_10m,wind_direction_10m,cloud_cover&daily=sunrise,sunset&timezone=Europe/London`);
+    const j = await r.json();
+    W.weather = j.current;
+    W.sun = j.daily ? { sunrise: j.daily.sunrise[0], sunset: j.daily.sunset[0] } : null;
+  } catch(e) {}
+  try {
+    const r = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${RLAT}&longitude=${RLON}&current=nitrogen_dioxide,birch_pollen,grass_pollen,alder_pollen,mugwort_pollen,ragweed_pollen&timezone=Europe/London`);
+    W.air = (await r.json()).current;
+  } catch(e) {}
+  // Westminster tide gauge (RLOI 7389). Use the readings endpoint with
+  // _sorted to get newest first, _limit=1 for the single most recent value.
+  // The measure id "0006-level-tidal_level-i-15_min-mAOD" is the 15-min mean
+  // tidal level relative to Ordnance Datum Newlyn (so values around 0 are
+  // mean sea level; positive = high tide, negative = low tide).
+  try {
+    const r = await fetch('https://environment.data.gov.uk/flood-monitoring/id/measures/0006-level-tidal_level-i-15_min-mAOD/readings?_sorted&_limit=1');
+    const j = await r.json();
+    W.tide = j.items?.[0];
+  } catch(e) { console.warn('Tide fetch failed', e); }
+}
+
+function nowConditions() {
+  const now = new Date(), h = now.getHours(), month = now.getMonth();
+  let isDark = h < 6 || h >= 20, isDawn = false;
+  if (W.sun) {
+    const t = now.getTime();
+    const sr = new Date(W.sun.sunrise).getTime();
+    const ss = new Date(W.sun.sunset).getTime();
+    isDark = t < sr || t > ss;
+    isDawn = !isDark && (t - sr) < 3600000;
+  }
+  const wind = W.weather?.wind_speed_10m ?? 8;
+  const rain = W.weather?.rain ?? 0;
+  const cloud = W.weather?.cloud_cover ?? 50;
+  const tide = W.tide ? parseFloat(W.tide.value) : NaN;
+  const pollenTotal = W.air
+    ? (W.air.birch_pollen||0)+(W.air.alder_pollen||0)+(W.air.grass_pollen||0)+(W.air.mugwort_pollen||0)+(W.air.ragweed_pollen||0)
+    : 0;
+  return {
+    is_dark: isDark, is_dawn: isDawn, month,
+    wind_kph: wind, is_windy: wind > 22, is_calm: wind < 5,
+    rain_mm: rain, is_raining: rain > 0.2,
+    cloud, is_overcast: cloud > 70,
+    // Westminster tide is mAOD, typical range −2.5 to +4.5
+    tide_m: isNaN(tide) ? null : tide,
+    is_high_tide: !isNaN(tide) && tide > 3.0,
+    no2: W.air?.nitrogen_dioxide ?? null,
+    pollen_total: pollenTotal,
+    pollen_active: pollenTotal > 5
+  };
+}
+
+/* ══════════════════════════════════════════════════════
+   MAP
+══════════════════════════════════════════════════════ */
+const map = L.map('map', {
+  zoomControl: true,
+  attributionControl: false,
+}).setView([51.505, -0.118], 12);
+
+const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+}).addTo(map);
+
+/* GeoJSON overlay layers */
+const greenLayer = L.geoJSON(null, {
+  style: {
+    fillColor: '#c8ddb8',
+    fillOpacity: 0.82,
+    color: '#3d6b3a',
+    weight: 0.8,
+    opacity: 0.55
+  }
+}).addTo(map);
+
+const waterLayer = L.geoJSON(null, {
+  style: {
+    fillColor: '#b8d4e8',
+    fillOpacity: 0.88,
+    color: '#4a7a9b',
+    weight: 0.8,
+    opacity: 0.6
+  }
+}).addTo(map);
+
+/* ── Overpass query ── */
+const OVERPASS = 'https://overpass-api.de/api/interpreter';
+
+// Bounding box: inner London zones 1-2 approx
+const BBOX = '51.44,-0.22,51.57,0.02';
+
+/* localStorage cache: map geometry doesn't change often, so cache the
+   processed GeoJSON for a week. Keyed by query name + bbox so an edit
+   to the bbox naturally invalidates. Returns null on miss/expiry. */
+const CACHE_VERSION = 'v2';
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function cacheGet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj.ts || (Date.now() - obj.ts) > CACHE_TTL_MS) return null;
+    return obj.data;
+  } catch(e) { return null; }
+}
+function cacheSet(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch(e) { /* quota exceeded — silently ignore */ }
+}
+
+async function fetchOverpass(query) {
+  const r = await fetch(OVERPASS, {
+    method: 'POST',
+    body: 'data=' + encodeURIComponent(query)
+  });
+  const text = await r.text();
+  if (!text.trim().startsWith('{')) throw new Error('non-JSON: ' + text.slice(0, 80));
+  return JSON.parse(text);
+}
+
+async function loadGreenSpaces() {
+  const cacheKey = `lg_green_${CACHE_VERSION}_${BBOX}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    greenLayer.addData(cached);
+    return { fromCache: true };
+  }
+  const query = `
+    [out:json][timeout:60];
+    (
+      way["leisure"="park"](${BBOX});
+      way["leisure"="nature_reserve"](${BBOX});
+      way["leisure"="garden"](${BBOX});
+      way["leisure"="common"](${BBOX});
+      way["landuse"="grass"](${BBOX});
+      way["landuse"="recreation_ground"](${BBOX});
+      way["landuse"="village_green"](${BBOX});
+      way["landuse"="cemetery"](${BBOX});
+      way["landuse"="allotments"](${BBOX});
+      way["landuse"="forest"](${BBOX});
+      way["natural"="wood"](${BBOX});
+      way["natural"="heath"](${BBOX});
+      relation["leisure"="park"](${BBOX});
+      relation["leisure"="nature_reserve"](${BBOX});
+      relation["natural"="wood"](${BBOX});
+    );
+    out geom;
+  `;
+  try {
+    const j = await fetchOverpass(query);
+    const geojson = osmToGeoJSON(j.elements);
+    greenLayer.addData(geojson);
+    cacheSet(cacheKey, geojson);
+    return { fromCache: false };
+  } catch(e) {
+    console.warn('Green space load failed:', e);
+    return { fromCache: false, error: true };
+  }
+}
+
+async function loadWater() {
+  const cacheKey = `lg_water_${CACHE_VERSION}_${BBOX}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) {
+    waterLayer.addData(cached);
+    return { fromCache: true };
+  }
+  // Ways: lakes, ponds, docks, canals, reservoirs.
+  // Relations (scoped to bbox): the Thames riverbank is a multipolygon
+  // relation tagged either `waterway=riverbank` (legacy) or
+  // `natural=water + water=river` (current). Bbox-scoped relations are
+  // small enough to avoid 504s.
+  const query = `
+    [out:json][timeout:90];
+    (
+      way["natural"="water"](${BBOX});
+      way["waterway"="canal"](${BBOX});
+      way["waterway"="dock"](${BBOX});
+      way["waterway"="basin"](${BBOX});
+      way["landuse"="reservoir"](${BBOX});
+      relation["natural"="water"](${BBOX});
+      relation["waterway"="riverbank"](${BBOX});
+    );
+    out geom;
+  `;
+  try {
+    const j = await fetchOverpass(query);
+    const geojson = osmToGeoJSON(j.elements);
+    waterLayer.addData(geojson);
+    cacheSet(cacheKey, geojson);
+    return { fromCache: false };
+  } catch(e) {
+    console.warn('Water load failed:', e);
+    return { fromCache: false, error: true };
+  }
+}
+
+/* ── OSM→GeoJSON converter ──
+   Ways become Polygons. Relations are stitched: outer-role members
+   are joined end-to-end into closed rings (so the Thames riverbank,
+   which is composed of many outer ways, renders as one continuous
+   polygon rather than a sequence of disconnected segments). Inner
+   members become holes when they share a polygon with an outer ring.
+*/
+function osmToGeoJSON(elements) {
+  const features = [];
+
+  // small helpers
+  const coordEq = (a, b) => a[0] === b[0] && a[1] === b[1];
+  const isClosed = ring => ring.length >= 4 && coordEq(ring[0], ring[ring.length-1]);
+
+  function stitchRings(segments) {
+    // segments: array of [lon,lat] arrays. Join them into closed rings.
+    const segs = segments.map(s => s.slice());
+    const rings = [];
+    while (segs.length) {
+      let ring = segs.shift().slice();
+      let extended = true;
+      while (extended && !isClosed(ring)) {
+        extended = false;
+        for (let i = 0; i < segs.length; i++) {
+          const s = segs[i];
+          const head = ring[0], tail = ring[ring.length-1];
+          const sHead = s[0], sTail = s[s.length-1];
+          if (coordEq(tail, sHead)) {
+            ring = ring.concat(s.slice(1));
+            segs.splice(i, 1); extended = true; break;
+          } else if (coordEq(tail, sTail)) {
+            ring = ring.concat(s.slice().reverse().slice(1));
+            segs.splice(i, 1); extended = true; break;
+          } else if (coordEq(head, sTail)) {
+            ring = s.slice().concat(ring.slice(1));
+            segs.splice(i, 1); extended = true; break;
+          } else if (coordEq(head, sHead)) {
+            ring = s.slice().reverse().concat(ring.slice(1));
+            segs.splice(i, 1); extended = true; break;
+          }
+        }
+      }
+      // Close if nearly closed; drop fragments that can't form a ring
+      if (!isClosed(ring)) {
+        if (ring.length >= 3) ring.push(ring[0].slice());
+        else continue;
+      }
+      if (ring.length >= 4) rings.push(ring);
+    }
+    return rings;
+  }
+
+  for (const el of elements) {
+    try {
+      if (el.type === 'way' && el.geometry && el.geometry.length >= 3) {
+        const coords = el.geometry.map(p => [p.lon, p.lat]);
+        if (!isClosed(coords)) coords.push(coords[0].slice());
+        features.push({
+          type: 'Feature',
+          properties: el.tags || {},
+          geometry: { type: 'Polygon', coordinates: [coords] }
+        });
+      } else if (el.type === 'relation' && el.members) {
+        const outerSegs = [], innerSegs = [];
+        for (const m of el.members) {
+          if (!m.geometry || m.geometry.length < 2) continue;
+          const seg = m.geometry.map(p => [p.lon, p.lat]);
+          if (m.role === 'outer') outerSegs.push(seg);
+          else if (m.role === 'inner') innerSegs.push(seg);
+        }
+        const outerRings = stitchRings(outerSegs);
+        const innerRings = stitchRings(innerSegs);
+        if (!outerRings.length) continue;
+
+        // Each outer ring becomes its own polygon; inner rings naively
+        // attach to the first outer ring (good enough for our purposes —
+        // the Thames has no holes worth speaking of at this scale).
+        if (outerRings.length === 1) {
+          features.push({
+            type: 'Feature',
+            properties: el.tags || {},
+            geometry: {
+              type: 'Polygon',
+              coordinates: [outerRings[0], ...innerRings]
+            }
+          });
+        } else {
+          const polys = outerRings.map((r, i) => i === 0
+            ? [r, ...innerRings]
+            : [r]);
+          features.push({
+            type: 'Feature',
+            properties: el.tags || {},
+            geometry: { type: 'MultiPolygon', coordinates: polys }
+          });
+        }
+      }
+    } catch(e) { /* skip malformed elements */ }
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/* ══════════════════════════════════════════════════════
+   PUBS
+══════════════════════════════════════════════════════ */
+const pubLayer = L.layerGroup();
+let pubData = null;          // array of {lat, lon, name, start_date, historic}
+let pubsLoading = false;
+let pubsLoaded = false;
+
+/* Tankard SVG — rendered at two sizes (single + cluster).
+   `historic` swaps a filled tankard for an outlined one. */
+function tankardSVG(size, historic) {
+  const w = size, h = size;
+  const fillBody = historic ? PAPER : INK;
+  const stroke = INK;
+  const sw = Math.max(0.5, size / 14);
+  // viewBox 14×14 — body 6×7, handle on right, lid on top, foam dome
+  return `<svg width="${w}" height="${h}" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">
+    <!-- foam dome -->
+    <path d="M3.2,3 Q5,1.5 7,2.2 Q9,1.5 10.8,3 L10.8,4 L3.2,4 Z" fill="${INK}"/>
+    <!-- body -->
+    <rect x="3" y="4" width="6" height="7" fill="${fillBody}" stroke="${stroke}" stroke-width="${sw}"/>
+    <!-- handle -->
+    <path d="M9,5.5 q3,0.5 3,2.5 t-3,2.5" fill="none" stroke="${stroke}" stroke-width="${sw}"/>
+    <!-- base -->
+    <rect x="2.6" y="11" width="6.8" height="1" fill="${INK}"/>
+  </svg>`;
+}
+
+async function fetchPubs() {
+  const cacheKey = `lg_pubs_${CACHE_VERSION}_${BBOX}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  // Pubs are nodes (most common) or ways (large pubs with building outlines).
+  // Exclude disused: namespace and explicit closed pubs.
+  const query = `
+    [out:json][timeout:60];
+    (
+      node["amenity"="pub"](${BBOX});
+      way["amenity"="pub"](${BBOX});
+    );
+    out center tags;
+  `;
+  try {
+    const j = await fetchOverpass(query);
+    const pubs = [];
+    for (const el of j.elements) {
+      const tags = el.tags || {};
+      // Skip closed/disused pubs
+      if (tags['disused:amenity']) continue;
+      if (tags['abandoned:amenity']) continue;
+      if (tags['was:amenity']) continue;
+      if (tags['amenity'] !== 'pub') continue;  // belt-and-braces
+
+      const lat = el.type === 'node' ? el.lat : el.center?.lat;
+      const lon = el.type === 'node' ? el.lon : el.center?.lon;
+      if (lat == null || lon == null) continue;
+
+      pubs.push({
+        lat, lon,
+        name: tags.name || 'Unnamed pub',
+        start_date: tags.start_date || tags['building:start_date'] || null,
+        historic: tags.historic === 'yes' || !!tags.heritage
+      });
+    }
+    cacheSet(cacheKey, pubs);
+    return pubs;
+  } catch(e) {
+    console.warn('Pub load failed:', e);
+    return [];
+  }
+}
+
+function loadPubsOnce() {
+  if (pubsLoaded || pubsLoading) {
+    if (pubsLoaded) renderPubs();
+    return;
+  }
+  pubsLoading = true;
+  fetchPubs().then(p => {
+    pubData = p;
+    pubsLoaded = true;
+    pubsLoading = false;
+    renderPubs();
+  });
+}
+
+/* Cluster pubs into a grid at coarse zooms; render individually at fine zooms.
+   Grid cell size shrinks as zoom increases; at zoom ≥14 every pub becomes
+   its own marker. */
+function gridKey(lat, lon, cellDeg) {
+  // cellDeg is the size in degrees; quantise lat/lon into cells.
+  return `${Math.floor(lat/cellDeg)}_${Math.floor(lon/cellDeg)}`;
+}
+
+function renderPubs() {
+  pubLayer.clearLayers();
+  if (!pubData?.length) return;
+
+  const z = map.getZoom();
+  const bounds = map.getBounds();
+
+  // Filter to viewport (with a small buffer) so we don't waste DOM nodes
+  const buf = 0.02;
+  const visible = pubData.filter(p =>
+    p.lat > bounds.getSouth() - buf && p.lat < bounds.getNorth() + buf &&
+    p.lon > bounds.getWest()  - buf && p.lon < bounds.getEast()  + buf
+  );
+
+  if (z >= 14) {
+    // Individual tankards
+    for (const p of visible) {
+      const size = 14;
+      const html = tankardSVG(size, p.historic);
+      const icon = L.divIcon({
+        className: 'pub-icon',
+        html,
+        iconSize: [size, size],
+        iconAnchor: [size/2, size]
+      });
+      const m = L.marker([p.lat, p.lon], { icon });
+      const meta = p.start_date ? `<div class="pub-meta">est. ${p.start_date}</div>` : '';
+      m.bindPopup(`<div class="pub-name">${escapeHtml(p.name)}</div>${meta}`);
+      pubLayer.addLayer(m);
+    }
+  } else if (z >= 12) {
+    // Grid clusters — cell size grows as we zoom out
+    const cellDeg = z === 13 ? 0.004 : 0.008; // ~440m at 13, ~880m at 12
+    const cells = new Map();
+    for (const p of visible) {
+      const k = gridKey(p.lat, p.lon, cellDeg);
+      if (!cells.has(k)) cells.set(k, { lat: 0, lon: 0, n: 0, hist: 0 });
+      const c = cells.get(k);
+      c.lat += p.lat; c.lon += p.lon; c.n += 1;
+      if (p.historic) c.hist += 1;
+    }
+    for (const c of cells.values()) {
+      const cx = c.lat / c.n, cy = c.lon / c.n;
+      const size = Math.min(28, 12 + Math.log2(c.n) * 3);
+      const histDominant = c.hist > c.n / 2;
+      const html =
+        `<div style="position:relative;width:${size}px;height:${size}px;">` +
+          tankardSVG(size, histDominant) +
+          (c.n > 1 ? `<span class="ccount">${c.n}</span>` : '') +
+        `</div>`;
+      const icon = L.divIcon({
+        className: 'pub-cluster-icon',
+        html,
+        iconSize: [size, size],
+        iconAnchor: [size/2, size]
+      });
+      const m = L.marker([cx, cy], { icon });
+      m.on('click', () => map.setView([cx, cy], Math.min(15, map.getZoom() + 2)));
+      pubLayer.addLayer(m);
+    }
+  }
+  // Below zoom 12: nothing — too dense to render meaningfully
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+// Re-render pubs on zoom and pan (only when in pubs mode and loaded)
+map.on('zoomend moveend', () => {
+  if (MODES[modeIdx] === 'pubs' && pubsLoaded) renderPubs();
+});
+
+
+const MODES = ['land', 'city', 'pubs'];
+let modeIdx = 0;
+
+function applyMode() {
+  const mode = MODES[modeIdx];
+  const tp = document.querySelector('.leaflet-tile-pane');
+  // Tiles visible in city + pubs modes only
+  if (tp) tp.style.opacity = (mode === 'land') ? '0' : '1';
+  // Pub layer only in pubs mode
+  if (mode === 'pubs') {
+    if (!map.hasLayer(pubLayer)) map.addLayer(pubLayer);
+    loadPubsOnce(); // idempotent — fetches first time only
+  } else {
+    if (map.hasLayer(pubLayer)) map.removeLayer(pubLayer);
+  }
+  // Update label highlight states
+  document.getElementById('ll').classList.toggle('on', mode === 'land');
+  document.getElementById('lc').classList.toggle('on', mode === 'city');
+  document.getElementById('lp').classList.toggle('on', mode === 'pubs');
+  // Tint the toggle pip subtly when in non-default state
+  document.getElementById('toggle').classList.toggle('city', mode !== 'land');
+}
+
+function doToggle() {
+  modeIdx = (modeIdx + 1) % MODES.length;
+  applyMode();
+}
+document.addEventListener('keydown', e => { if (e.key==='t'||e.key==='T') doToggle(); });
+
+// Start in land mode — tiles hidden
+document.querySelector('.leaflet-tile-pane') &&
+  (document.querySelector('.leaflet-tile-pane').style.opacity = '0');
+
+// We need to wait for Leaflet to create the tile pane
+map.on('load', () => applyMode());
+
+/* ══════════════════════════════════════════════════════
+   CHORUS — six 60×38 animated SVG cells
+══════════════════════════════════════════════════════ */
+let _tick = 0;
+
+function chorusThames() {
+  // Westminster tide is mAOD: typically -2.5 (low) to +4.5 (high).
+  // Map to a 0..1 fill so the cell shows a visibly rising/falling river.
+  const raw = W.tide ? parseFloat(W.tide.value) : NaN;
+  const t = isNaN(raw) ? 0.5 : raw;
+  const fill = Math.max(0.05, Math.min(0.95, (t + 2.5) / 7));
+  const surface = 35 - fill * 28;
+  const phase = _tick * 0.04;
+  let s = '';
+  for (let y = 30; y <= 36; y += 2.5)
+    s += `<line x1="0" y1="${y}" x2="60" y2="${y}" stroke="${INK}" stroke-width="0.25" opacity="0.2"/>`;
+  s += `<path d="M0,${(surface+Math.sin(phase)*0.7).toFixed(1)} Q15,${(surface-0.8+Math.sin(phase+1)*0.7).toFixed(1)} 30,${(surface+Math.sin(phase+2)*0.7).toFixed(1)} T60,${(surface+Math.sin(phase+3)*0.7).toFixed(1)}" fill="none" stroke="${INK}" stroke-width="1.2"/>`;
+  for (let y = surface+3; y < 36; y += 2.5) {
+    let x = 0;
+    while (x < 60) {
+      const len = 4 + ((x*13+y*7)%7);
+      s += `<line x1="${x.toFixed(0)}" y1="${y.toFixed(0)}" x2="${Math.min(60,(x+len)).toFixed(0)}" y2="${y.toFixed(0)}" stroke="${INK}" stroke-width="0.35"/>`;
+      x += len + 2;
+    }
+  }
+  if (fill < 0.3) for (let i=0;i<5;i++)
+    s += `<ellipse cx="${6+i*11}" cy="${(surface-1.5).toFixed(1)}" rx="1.8" ry="0.7" fill="${INK}"/>`;
+  const gaugeTop = Math.max(2, surface - 5);
+  const gaugeH = Math.max(1, 36 - gaugeTop);
+  s += `<rect x="0" y="${gaugeTop.toFixed(1)}" width="2" height="${gaugeH.toFixed(1)}" fill="${INK}"/>`;
+  for (let m=0;m<4;m++)
+    s += `<line x1="0" y1="${(gaugeTop+m*4).toFixed(1)}" x2="3" y2="${(gaugeTop+m*4).toFixed(1)}" stroke="${INK}" stroke-width="0.5"/>`;
+  return s;
+}
+
+function chorusWind() {
+  const w = W.weather?.wind_speed_10m || 0;
+  const speed = Math.min(1, w / 30);
+  let s = '';
+  for (let i=0;i<6;i++) {
+    const baseY = 6 + i*5;
+    const offset = (i*17)%60;
+    const driftPx = (_tick*(0.35+speed*1.5)+offset)%80;
+    const x = driftPx - 10;
+    const len = 5 + speed*9;
+    if (x > -len && x < 60)
+      s += `<line x1="${x.toFixed(1)}" y1="${baseY}" x2="${(x+len).toFixed(1)}" y2="${(baseY-1)}" stroke="${INK}" stroke-width="0.45" opacity="${(0.28+speed*0.42).toFixed(2)}"/>`;
+  }
+  const flutter = Math.sin(_tick*0.15*(0.5+speed))*2;
+  s += `<line x1="30" y1="36" x2="30" y2="18" stroke="${INK}" stroke-width="1"/>`;
+  s += `<path d="M30,18 Q${(37+flutter).toFixed(1)},${(20+flutter*0.3).toFixed(1)} 44,22 L${(37+flutter).toFixed(1)},${(26+flutter*0.3).toFixed(1)} L30,27 Z" fill="${INK}"/>`;
+  s += `<line x1="0" y1="36" x2="60" y2="36" stroke="${INK}" stroke-width="0.6"/>`;
+  return s;
+}
+
+function chorusAir() {
+  const n = W.air?.nitrogen_dioxide || 30;
+  const density = Math.min(1, n/100);
+  let s = '';
+  s += `<rect x="43" y="27" width="13" height="6" fill="${INK}"/>`;
+  s += `<rect x="45" y="22" width="8"  height="5" fill="${INK}"/>`;
+  s += `<rect x="46" y="23" width="2"  height="2" fill="${PAPER}"/>`;
+  s += `<rect x="49" y="23" width="2"  height="2" fill="${PAPER}"/>`;
+  s += `<circle cx="46" cy="33" r="1.4" fill="${INK}"/>`;
+  s += `<circle cx="53" cy="33" r="1.4" fill="${INK}"/>`;
+  const numP = Math.floor(16+density*36);
+  for (let i=0;i<numP;i++) {
+    const seed=(i*41)%100;
+    const drift=((_tick*0.45+seed*0.3))%50;
+    const px=43-drift, py=26-(seed*0.18)%13-drift*0.1;
+    if (px<0||py<2) continue;
+    s += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(0.3+(i%3)*0.14).toFixed(1)}" fill="${INK}" opacity="${(0.22+density*0.42).toFixed(2)}"/>`;
+  }
+  s += `<line x1="0" y1="36" x2="60" y2="36" stroke="${INK}" stroke-width="0.6"/>`;
+  return s;
+}
+
+function chorusLamps() {
+  const c = nowConditions();
+  const lit = c.is_dark || c.is_dawn;
+  // When lit: dark background fills the cell, lamps glow warm.
+  // When not: parchment background, lamps drawn as quiet ink outlines.
+  const BG = lit ? '#1a140c' : 'transparent';
+  const LAMP = lit ? '#f4d89a' : INK;
+  const GLOW = '#f4d89a';
+  let s = '';
+  // Cell-fill (dark backdrop for night)
+  if (lit) {
+    s += `<rect x="0" y="0" width="60" height="38" fill="${BG}"/>`;
+  }
+  // Ground line
+  s += `<line x1="0" y1="36" x2="60" y2="36" stroke="${LAMP}" stroke-width="0.6" opacity="${lit ? 0.7 : 1}"/>`;
+  [15,30,45].forEach(lx => {
+    // Halo first (only when lit), so the post/head draw over it
+    if (lit) {
+      const pulse = 1 + Math.sin(_tick * 0.08 + lx) * 0.12;
+      s += `<circle cx="${lx}" cy="5.5" r="${(8 * pulse).toFixed(1)}" fill="${GLOW}" opacity="0.18"/>`;
+      s += `<circle cx="${lx}" cy="5.5" r="${(5 * pulse).toFixed(1)}" fill="${GLOW}" opacity="0.4"/>`;
+      s += `<ellipse cx="${lx}" cy="36" rx="11" ry="2" fill="${GLOW}" opacity="0.22"/>`;
+    }
+    // Post
+    s += `<rect x="${lx-0.75}" y="8" width="1.5" height="28" fill="${LAMP}"/>`;
+    // Crossbar
+    s += `<rect x="${lx-4}" y="7" width="8" height="1.2" fill="${LAMP}"/>`;
+    // Lamp head
+    if (lit) {
+      // Bright glowing head
+      s += `<rect x="${lx-3}" y="4" width="6" height="3.5" fill="${GLOW}" stroke="${LAMP}" stroke-width="0.4"/>`;
+      // Tiny flame inside
+      s += `<circle cx="${lx}" cy="5.5" r="1.2" fill="#fff5d0"/>`;
+    } else {
+      // Unlit: outlined head, no fill
+      s += `<rect x="${lx-3}" y="4" width="6" height="3.5" fill="none" stroke="${LAMP}" stroke-width="0.7"/>`;
+    }
+  });
+  // Rain (works both states)
+  if (c.is_raining) for (let i = 0; i < 8; i++) {
+    const seed = (i*13)%100, drift = (_tick*0.6 + seed*0.4) % 38;
+    const px = (i*7 + 3) % 60;
+    s += `<line x1="${px}" y1="${drift.toFixed(0)}" x2="${px+1}" y2="${Math.min(36, drift+4).toFixed(0)}" stroke="${LAMP}" stroke-width="0.3" opacity="0.55"/>`;
+  }
+  return s;
+}
+
+function chorusPollen() {
+  const total = W.air
+    ? (W.air.birch_pollen||0)+(W.air.alder_pollen||0)+(W.air.grass_pollen||0)+(W.air.mugwort_pollen||0)+(W.air.ragweed_pollen||0)
+    : 0;
+  const density = Math.min(1, total/80);
+  let s = '';
+  s += `<rect x="6"  y="26" width="2.5" height="10" fill="${INK}"/>`;
+  s += `<line x1="7" y1="26" x2="3"  y2="18" stroke="${INK}" stroke-width="0.9"/>`;
+  s += `<line x1="7" y1="26" x2="11" y2="18" stroke="${INK}" stroke-width="0.9"/>`;
+  s += `<line x1="7" y1="23" x2="1"  y2="14" stroke="${INK}" stroke-width="0.7"/>`;
+  s += `<line x1="7" y1="23" x2="13" y2="14" stroke="${INK}" stroke-width="0.7"/>`;
+  s += `<line x1="7" y1="26" x2="7"  y2="10" stroke="${INK}" stroke-width="0.9"/>`;
+  s += `<line x1="0" y1="36" x2="60" y2="36" stroke="${INK}" stroke-width="0.6"/>`;
+  if (density > 0.05) {
+    const numP = Math.floor(10+density*40);
+    for (let i=0;i<numP;i++) {
+      const seed=(i*53)%100, drift=(_tick*0.38+seed*0.5)%55;
+      const px=10+drift, py=8+(seed*0.18)%18-drift*0.12;
+      if (px>57||py<2) continue;
+      s += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${(0.3+(i%3)*0.1).toFixed(1)}" fill="${INK}" opacity="${(0.28+density*0.42).toFixed(2)}"/>`;
+    }
+  } else {
+    s += `<text x="36" y="22" text-anchor="middle" font-family="serif" font-size="6" fill="${INK}" opacity="0.4">—</text>`;
+  }
+  return s;
+}
+
+function chorusTemp() {
+  // London annual range roughly -2°C (cold winter morning) to 32°C (heatwave).
+  // Map to thermometer fill 0..1 with the bulb always full.
+  const t = W.weather?.temperature_2m;
+  const val = (typeof t === 'number') ? t : 12;
+  const fill = Math.max(0, Math.min(1, (val + 5) / 40));   // -5..35°C → 0..1
+  const tubeTop = 6, tubeBot = 28;
+  const mercTop = tubeBot - (tubeBot - tubeTop) * fill;
+  const cx = 30;
+  let s = '';
+  // ground line
+  s += `<line x1="0" y1="36" x2="60" y2="36" stroke="${INK}" stroke-width="0.6"/>`;
+  // tick marks down each side of the tube
+  for (let i = 0; i <= 5; i++) {
+    const ty = tubeTop + i * ((tubeBot - tubeTop) / 5);
+    const tw = (i % 5 === 0) ? 4 : 2.5;
+    s += `<line x1="${cx-5}" y1="${ty.toFixed(1)}" x2="${(cx-5-tw).toFixed(1)}" y2="${ty.toFixed(1)}" stroke="${INK}" stroke-width="0.4" opacity="0.6"/>`;
+    s += `<line x1="${cx+5}" y1="${ty.toFixed(1)}" x2="${(cx+5+tw).toFixed(1)}" y2="${ty.toFixed(1)}" stroke="${INK}" stroke-width="0.4" opacity="0.6"/>`;
+  }
+  // tube outline (rectangle with rounded top)
+  s += `<rect x="${cx-2.5}" y="${tubeTop}" width="5" height="${tubeBot-tubeTop}" fill="${PAPER}" stroke="${INK}" stroke-width="0.7"/>`;
+  s += `<circle cx="${cx}" cy="${tubeTop}" r="2.5" fill="${PAPER}" stroke="${INK}" stroke-width="0.7"/>`;
+  // mercury column — rises with temperature
+  s += `<rect x="${cx-1.6}" y="${mercTop.toFixed(1)}" width="3.2" height="${(tubeBot - mercTop).toFixed(1)}" fill="${INK}"/>`;
+  // bulb at the bottom — always solid
+  s += `<circle cx="${cx}" cy="${tubeBot+3}" r="4" fill="${INK}" stroke="${INK}" stroke-width="0.7"/>`;
+  // a small heat-shimmer if it's hot, frost flakes if it's cold
+  if (val >= 25) {
+    for (let i = 0; i < 3; i++) {
+      const sx = 10 + i * 18;
+      const phase = _tick * 0.06 + i * 1.7;
+      s += `<path d="M${sx},${(20 - Math.sin(phase)*1.5).toFixed(1)} q2,-2 4,0 t4,0" fill="none" stroke="${INK}" stroke-width="0.4" opacity="0.45"/>`;
+    }
+  } else if (val <= 2) {
+    [[8,12],[50,10],[12,28],[48,26]].forEach(([fx, fy]) => {
+      s += `<g transform="translate(${fx},${fy}) rotate(${(_tick*0.5)%360})" opacity="0.5">`;
+      for (let a = 0; a < 6; a++) {
+        const ang = (a/6) * Math.PI * 2;
+        s += `<line x1="0" y1="0" x2="${(Math.cos(ang)*1.8).toFixed(1)}" y2="${(Math.sin(ang)*1.8).toFixed(1)}" stroke="${INK}" stroke-width="0.4"/>`;
+      }
+      s += `</g>`;
+    });
+  }
+  return s;
+}
+
+/* ══════════════════════════════════════════════════════
+   CELESTIAL CARTOUCHE — sun and moon trade places
+   Inline (very simplified) solar+lunar position math.
+   Returns altitude (radians above horizon) and azimuth
+   (radians clockwise from north). Accurate to ~1° which
+   is more than enough for decorative placement.
+══════════════════════════════════════════════════════ */
+
+function solarPosition(date, lat, lon) {
+  const rad = Math.PI / 180;
+  const dayMs = 1000 * 60 * 60 * 24;
+  // Julian day
+  const J1970 = 2440588;
+  const J2000 = 2451545;
+  const J = date.valueOf() / dayMs - 0.5 + J1970 - J2000;
+  // Mean anomaly
+  const M = rad * (357.5291 + 0.98560028 * J);
+  // Equation of center
+  const C = rad * (1.9148 * Math.sin(M) + 0.0200 * Math.sin(2*M) + 0.0003 * Math.sin(3*M));
+  // Ecliptic longitude
+  const P = rad * 102.9372;
+  const L = M + C + P + Math.PI;
+  // Obliquity
+  const e = rad * 23.4397;
+  // Right ascension, declination
+  const ra  = Math.atan2(Math.sin(L) * Math.cos(e), Math.cos(L));
+  const dec = Math.asin(Math.sin(L) * Math.sin(e));
+  // Sidereal time
+  const lw  = rad * -lon;
+  const phi = rad * lat;
+  const theta = rad * (280.16 + 360.9856235 * J) - lw;
+  const H = theta - ra;
+  // Altitude + azimuth
+  const altitude = Math.asin(Math.sin(phi)*Math.sin(dec) + Math.cos(phi)*Math.cos(dec)*Math.cos(H));
+  const azimuth  = Math.atan2(Math.sin(H), Math.cos(H)*Math.sin(phi) - Math.tan(dec)*Math.cos(phi)) + Math.PI;
+  return { altitude, azimuth };
+}
+
+function lunarPosition(date, lat, lon) {
+  // Same approach, lunar-specific orbital elements
+  const rad = Math.PI / 180;
+  const dayMs = 1000 * 60 * 60 * 24;
+  const J1970 = 2440588;
+  const J2000 = 2451545;
+  const d = date.valueOf() / dayMs - 0.5 + J1970 - J2000;
+  const L = rad * (218.316 + 13.176396 * d);  // ecliptic longitude
+  const M = rad * (134.963 + 13.064993 * d);  // mean anomaly
+  const F = rad * (93.272 + 13.229350 * d);   // mean distance
+  const lambda = L + rad * 6.289 * Math.sin(M);
+  const beta   = rad * 5.128 * Math.sin(F);
+  const e = rad * 23.4397;
+  const ra  = Math.atan2(Math.sin(lambda)*Math.cos(e) - Math.tan(beta)*Math.sin(e), Math.cos(lambda));
+  const dec = Math.asin(Math.sin(beta)*Math.cos(e) + Math.cos(beta)*Math.sin(e)*Math.sin(lambda));
+  const lw  = rad * -lon;
+  const phi = rad * lat;
+  const theta = rad * (280.16 + 360.9856235 * d) - lw;
+  const H = theta - ra;
+  const altitude = Math.asin(Math.sin(phi)*Math.sin(dec) + Math.cos(phi)*Math.cos(dec)*Math.cos(H));
+  const azimuth  = Math.atan2(Math.sin(H), Math.cos(H)*Math.sin(phi) - Math.tan(dec)*Math.cos(phi)) + Math.PI;
+  // Phase (very rough — distance from new moon in days, normalised)
+  const phaseDays = ((d - 0) % 29.530588853 + 29.530588853) % 29.530588853;
+  const phase = phaseDays / 29.530588853;  // 0..1, 0=new, 0.5=full
+  return { altitude, azimuth, phase };
+}
+
+/* Convert (alt, az) to an (x%, y%) position on screen.
+   Use the map centre as the observer. Azimuth: 0=N, 90=E, 180=S, 270=W.
+   On a top-down map of London, the sun mostly sits in the southern half of
+   the sky, so we project the azimuth onto x (east-west) and put altitude
+   on y (higher = closer to centre/up; lower = nearer the edge).
+*/
+function celestialScreenPos(altitude, azimuth) {
+  // Below horizon: hidden
+  if (altitude < -0.05) return null;
+  // X: from azimuth. Map east(90°) → 88%, west(270°) → 12%, south(180°) → 50%
+  // North-rising/setting sun is rare at London latitude, clamp.
+  const azDeg = (azimuth * 180 / Math.PI + 360) % 360;
+  let xFrac;
+  if (azDeg < 180) {
+    // Morning side (east through south): 90→88%, 180→50%
+    xFrac = 0.5 + 0.38 * Math.cos((azDeg - 90) * Math.PI / 180);
+    // Better: simply map E→right, W→left
+    xFrac = 0.88 - (azDeg - 90) / 180 * 0.76;  // 90→0.88, 270→0.12
+  } else {
+    xFrac = 0.88 - (azDeg - 90) / 180 * 0.76;
+  }
+  xFrac = Math.max(0.08, Math.min(0.92, xFrac));
+  // Y: from altitude. High alt (90°) → top of map (10%); horizon → 75%
+  const altDeg = altitude * 180 / Math.PI;
+  const yFrac = Math.max(0.12, Math.min(0.78, 0.78 - (altDeg / 90) * 0.66));
+  return { xFrac, yFrac };
+}
+
+/* Draw the sun figure or the moon figure into the SVG */
+function celestialSVG(body, phase) {
+  if (body === 'sun') {
+    // Old-map sun-with-a-face: face in middle, wavy rays radiating
+    let s = '<g>';
+    // Rays (alternating straight and wavy)
+    for (let i = 0; i < 12; i++) {
+      const ang = (i / 12) * Math.PI * 2;
+      const x1 = 40 + Math.cos(ang) * 26;
+      const y1 = 40 + Math.sin(ang) * 26;
+      const x2 = 40 + Math.cos(ang) * 36;
+      const y2 = 40 + Math.sin(ang) * 36;
+      if (i % 2 === 0) {
+        s += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${INK}" stroke-width="1.4" stroke-linecap="round"/>`;
+      } else {
+        // Wavy ray (zigzag)
+        const mx = 40 + Math.cos(ang) * 31;
+        const my = 40 + Math.sin(ang) * 31;
+        const perp = ang + Math.PI/2;
+        const mx2 = mx + Math.cos(perp) * 2;
+        const my2 = my + Math.sin(perp) * 2;
+        s += `<path d="M${x1.toFixed(1)},${y1.toFixed(1)} Q${mx2.toFixed(1)},${my2.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}" fill="none" stroke="${INK}" stroke-width="1.2"/>`;
+      }
+    }
+    // Disc
+    s += `<circle cx="40" cy="40" r="24" fill="#f4d89a" stroke="${INK}" stroke-width="1.5"/>`;
+    // Face: eyes, nose, smile
+    s += `<circle cx="33" cy="36" r="1.5" fill="${INK}"/>`;
+    s += `<circle cx="47" cy="36" r="1.5" fill="${INK}"/>`;
+    s += `<path d="M38,42 Q40,43 42,42" fill="none" stroke="${INK}" stroke-width="0.9" stroke-linecap="round"/>`;
+    s += `<path d="M33,46 Q40,52 47,46" fill="none" stroke="${INK}" stroke-width="1.2" stroke-linecap="round"/>`;
+    // Cheeks
+    s += `<circle cx="30" cy="43" r="1.2" fill="${INK}" opacity="0.3"/>`;
+    s += `<circle cx="50" cy="43" r="1.2" fill="${INK}" opacity="0.3"/>`;
+    s += '</g>';
+    return s;
+  } else {
+    // Moon-with-a-face, profile-style for waxing/waning, or full crescent
+    // Crescent direction: lit side faces sun. For phase 0..0.5 waxing (lit right),
+    // 0.5..1 waning (lit left). Near 0.5: full moon disc.
+    let s = '<g>';
+    const isFull = phase > 0.42 && phase < 0.58;
+    const isNew  = phase < 0.05 || phase > 0.95;
+    if (isFull) {
+      // Full moon: round face
+      s += `<circle cx="40" cy="40" r="24" fill="#e8e0c4" stroke="${INK}" stroke-width="1.5"/>`;
+      // Maria (dark patches)
+      s += `<circle cx="33" cy="34" r="3" fill="${INK}" opacity="0.18"/>`;
+      s += `<circle cx="46" cy="42" r="4" fill="${INK}" opacity="0.18"/>`;
+      s += `<circle cx="36" cy="48" r="2.5" fill="${INK}" opacity="0.18"/>`;
+      // Sleepy face
+      s += `<path d="M30,36 Q33,34 36,36" fill="none" stroke="${INK}" stroke-width="0.9" stroke-linecap="round"/>`;
+      s += `<path d="M44,36 Q47,34 50,36" fill="none" stroke="${INK}" stroke-width="0.9" stroke-linecap="round"/>`;
+      s += `<path d="M37,46 Q40,47 43,46" fill="none" stroke="${INK}" stroke-width="0.9" stroke-linecap="round"/>`;
+    } else if (isNew) {
+      // New moon: faint outline only
+      s += `<circle cx="40" cy="40" r="24" fill="none" stroke="${INK}" stroke-width="0.8" stroke-dasharray="2 2" opacity="0.5"/>`;
+    } else {
+      // Crescent profile — classic man-in-the-moon
+      const waxing = phase < 0.5;
+      // Lit crescent shape: outer circle minus inner offset ellipse
+      // We approximate by rendering the disc, then a parchment-coloured
+      // ellipse over the shadow side.
+      s += `<circle cx="40" cy="40" r="24" fill="#e8e0c4" stroke="${INK}" stroke-width="1.5"/>`;
+      // Shadow side
+      const shadowOffsetX = waxing ? -8 : 8;
+      const shadowR = 22 - Math.abs(phase - 0.5) * 30;
+      s += `<ellipse cx="${40 + shadowOffsetX}" cy="40" rx="${Math.max(2, shadowR)}" ry="22" fill="var(--paper-2, #e3d8bd)" opacity="0.95"/>`;
+      // Profile face on the lit side
+      const faceX = waxing ? 47 : 33;
+      const noseX = waxing ? 51 : 29;
+      // Eye
+      s += `<circle cx="${faceX}" cy="36" r="1.4" fill="${INK}"/>`;
+      // Nose hook
+      s += `<path d="M${faceX+1},38 Q${noseX},40 ${faceX+1},43" fill="none" stroke="${INK}" stroke-width="1" stroke-linecap="round"/>`;
+      // Mouth
+      s += `<path d="M${faceX-3},46 Q${faceX-1},47 ${faceX+1},46" fill="none" stroke="${INK}" stroke-width="0.9" stroke-linecap="round"/>`;
+    }
+    s += '</g>';
+    return s;
+  }
+}
+
+function updateCelestial() {
+  const now = new Date();
+  const sun = solarPosition(now, RLAT, RLON);
+  const el = document.getElementById('celestial');
+  const svg = document.getElementById('celestial-svg');
+  if (!el || !svg) return;
+  // Pick body: sun if above horizon, otherwise moon
+  let body, pos, phase = 0;
+  if (sun.altitude > -0.05) {
+    body = 'sun';
+    pos = celestialScreenPos(sun.altitude, sun.azimuth);
+  } else {
+    const moon = lunarPosition(now, RLAT, RLON);
+    phase = moon.phase;
+    if (moon.altitude > -0.05) {
+      body = 'moon';
+      pos = celestialScreenPos(moon.altitude, moon.azimuth);
+    } else {
+      // Both below horizon — hide
+      el.style.opacity = '0';
+      return;
+    }
+  }
+  if (!pos) { el.style.opacity = '0'; return; }
+  el.style.opacity = '0.85';
+  // Position relative to the map container
+  const mapEl = document.getElementById('map');
+  const w = mapEl.clientWidth, h = mapEl.clientHeight;
+  el.style.left = `${(pos.xFrac * w).toFixed(0)}px`;
+  el.style.top  = `${(pos.yFrac * h).toFixed(0)}px`;
+  svg.innerHTML = celestialSVG(body, phase);
+}
+
+
+const RENDERERS = { thames:chorusThames, wind:chorusWind, air:chorusAir, lamps:chorusLamps, pollen:chorusPollen, temp:chorusTemp };
+
+/* Readouts: numeric labels that sit on top of each chorus cell.
+   Format the value with units; show "—" when data hasn't arrived yet. */
+function readouts() {
+  const c = nowConditions();
+  const fmt = (v, digits=1) => (typeof v === 'number' && !isNaN(v))
+    ? v.toFixed(digits) : '—';
+
+  const tideVal = W.tide ? parseFloat(W.tide.value) : NaN;
+  const tideLabel = isNaN(tideVal)
+    ? '—'
+    : (tideVal > 3 ? 'high ' : tideVal < -1 ? 'low ' : '') + fmt(tideVal, 1);
+
+  const windKph = W.weather?.wind_speed_10m;
+  const windLabel = (typeof windKph === 'number')
+    ? `${windKph.toFixed(0)} <span class="crd-u">kph</span>`
+    : '—';
+
+  const no2 = W.air?.nitrogen_dioxide;
+  const no2Label = (typeof no2 === 'number')
+    ? `${no2.toFixed(0)} <span class="crd-u">µg</span>`
+    : '—';
+
+  // For lamps, show sunset/sunrise time depending on state
+  let lampsLabel = '—';
+  if (W.sun) {
+    const fmtT = iso => {
+      const d = new Date(iso);
+      return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+    };
+    if (c.is_dark) lampsLabel = `↑ ${fmtT(W.sun.sunrise)}`;
+    else           lampsLabel = `↓ ${fmtT(W.sun.sunset)}`;
+  }
+
+  const pollen = c.pollen_total;
+  const pollenLabel = (typeof pollen === 'number' && W.air)
+    ? (pollen < 1 ? 'none' : pollen < 20 ? 'low' : pollen < 50 ? 'mod' : 'high')
+    : '—';
+
+  const tempVal = W.weather?.temperature_2m;
+  const tempLabel = (typeof tempVal === 'number')
+    ? `${tempVal.toFixed(1)}°`
+    : '—';
+
+  return {
+    thames: tideLabel + (isNaN(tideVal) ? '' : ' <span class="crd-u">m</span>'),
+    wind:   windLabel,
+    air:    no2Label,
+    lamps:  lampsLabel,
+    pollen: pollenLabel,
+    temp:   tempLabel
+  };
+}
+
+function updateChorus() {
+  const c = nowConditions();
+  const lampsLit = c.is_dark || c.is_dawn;
+  const ready  = { thames: c.is_high_tide, wind: c.is_windy, air: c.no2 != null && c.no2 > 50, lamps: false, pollen: c.pollen_active, temp: false };
+  const muted  = { wind: c.is_calm, lamps: !lampsLit, pollen: !c.pollen_active };
+  const labels = readouts();
+  for (const [id, fn] of Object.entries(RENDERERS)) {
+    const cell = document.querySelector(`.cc[data-id="${id}"]`);
+    const cv   = document.getElementById('cv-'+id);
+    const rd   = document.getElementById('rd-'+id);
+    if (cv) cv.innerHTML = fn();
+    if (rd) rd.innerHTML = labels[id] ?? '';
+    if (!cell) continue;
+    cell.classList.remove('mute','ready','lit');
+    if (id === 'lamps' && lampsLit) cell.classList.add('lit');
+    else if (muted[id]) cell.classList.add('mute');
+    else if (ready[id]) cell.classList.add('ready');
+  }
+}
+
+function frame() {
+  _tick++;
+  if (_tick % 4 === 0) updateChorus();
+  requestAnimationFrame(frame);
+}
+
+/* ══════════════════════════════════════════════════════
+   BOOT
+══════════════════════════════════════════════════════ */
+(async () => {
+  // Hide tiles on start (land mode)
+  map.whenReady(() => {
+    const tp = document.querySelector('.leaflet-tile-pane');
+    if (tp) tp.style.opacity = '0';
+  });
+
+  // Start chorus immediately with defaults
+  updateChorus();
+  updateCelestial();
+  requestAnimationFrame(frame);
+
+  // Refresh celestial position every minute (sun/moon move slowly)
+  setInterval(updateCelestial, 60 * 1000);
+  // And reposition on window resize so it tracks the map
+  window.addEventListener('resize', updateCelestial);
+
+  // Fetch live data (non-blocking — chorus updates when it arrives)
+  fetchAll().then(() => updateChorus());
+  setInterval(fetchAll, 10 * 60 * 1000);
+
+  // Load map overlays — fire both in parallel; each renders as soon as it
+  // resolves (no waiting on the slower one). Cached layers will paint
+  // synchronously on first call, so the loading notice often never appears
+  // on repeat visits.
+  const notice = document.getElementById('loading-notice');
+  const greenP = loadGreenSpaces();
+  const waterP = loadWater();
+
+  // If both resolve from cache, hide the notice immediately.
+  Promise.all([greenP, waterP]).then(([g, w]) => {
+    if (g?.fromCache && w?.fromCache) {
+      if (notice) notice.remove();
+      return;
+    }
+    if (notice) notice.style.opacity = '0';
+    setTimeout(() => { if (notice) notice.remove(); }, 1200);
+  });
+
+  // Quick check: if both came from cache synchronously, also drop the notice early.
+  setTimeout(() => {
+    if (greenLayer.getLayers().length && waterLayer.getLayers().length && notice) {
+      notice.style.opacity = '0';
+    }
+  }, 100);
+})();
+</script>
+</body>
+</html>
